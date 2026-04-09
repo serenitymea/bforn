@@ -1,0 +1,12 @@
+services:
+  bot:
+    build: .
+    container_name: tg_tutor_bot
+    restart: unless-stopped
+    environment:
+      - BOT_TOKEN=${BOT_TOKEN}
+      - ADMIN_USERNAME=${ADMIN_USERNAME}
+      - ADMIN_USER_ID=${ADMIN_USER_ID}
+      - DATA_DIR=/app/data
+    volumes:
+      - ./data:/app/data

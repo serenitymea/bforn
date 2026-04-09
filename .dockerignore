@@ -1,0 +1,29 @@
+# Секрети — ніколи не потрапляють в образ
+.env
+*.env.*
+
+# База даних — зберігається в volume, не в образі
+data/
+*.db
+*.sqlite3
+
+# Кеш та тимчасові файли
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Git
+.git/
+.gitignore
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Логи
+*.log
