@@ -1,17 +1,12 @@
-# Python
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
-*.env
+.env
 .env/
 *.sqlite3
 *.log
-
-# IDE
 .vscode/
 .idea/
-
-# OS
 .DS_Store
 Thumbs.db

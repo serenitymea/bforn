@@ -8,21 +8,18 @@ import psycopg2
 import psycopg2.extras
 from psycopg2.pool import ThreadedConnectionPool
 
-DEFAULT_INTERVAL = 90  # хвилин
+DEFAULT_INTERVAL = 90
 
-# ── DSN ───────────────────────────────────────────────────────────────────────
-# Railway завжди надає DATABASE_URL у форматі postgresql://
-# psycopg2 підтримує обидва варіанти (postgresql:// і postgres://)
-# НЕ замінюємо схему — залишаємо як є.
-_DATABASE_URL = os.environ.get("DATABASE_URL")
+_PGHOST     = os.environ.get("PGHOST", "")
+_PGPORT     = os.environ.get("PGPORT", "5432")
+_PGDATABASE = os.environ.get("PGDATABASE", "")
+_PGUSER     = os.environ.get("PGUSER", "")
+_PGPASSWORD = os.environ.get("PGPASSWORD", "")
 
-if not _DATABASE_URL:
-    _host = os.environ.get("POSTGRES_HOST", "db")
-    _port = os.environ.get("POSTGRES_PORT", "5432")
-    _db   = os.environ.get("POSTGRES_DB",   "botdb")
-    _user = os.environ.get("POSTGRES_USER", "botuser")
-    _pwd  = os.environ.get("POSTGRES_PASSWORD", "")
-    _DATABASE_URL = f"postgresql://{_user}:{_pwd}@{_host}:{_port}/{_db}"
+if not all([_PGHOST, _PGDATABASE, _PGUSER, _PGPASSWORD]):
+    raise RuntimeError("DB env vars not set: PGHOST, PGDATABASE, PGUSER, PGPASSWORD are required")
+
+_DATABASE_URL = f"postgresql://{_PGUSER}:{_PGPASSWORD}@{_PGHOST}:{_PGPORT}/{_PGDATABASE}"
 
 
 class Database:
@@ -31,24 +28,19 @@ class Database:
         self._pool = self._create_pool_with_retry()
         self._init_tables()
 
-    # ── Pool creation with retry (Railway DB може стартувати повільніше) ───────
-
     def _create_pool_with_retry(self, retries: int = 10, delay: float = 3.0) -> ThreadedConnectionPool:
         last_exc = None
         for attempt in range(1, retries + 1):
             try:
                 pool = ThreadedConnectionPool(1, 10, dsn=_DATABASE_URL)
-                # Перевіряємо що з'єднання реально працює
                 conn = pool.getconn()
                 pool.putconn(conn)
                 return pool
             except Exception as exc:
                 last_exc = exc
-                print(f"[DB] Спроба {attempt}/{retries} не вдалась: {exc}. Повтор через {delay}с...")
+                print(f"[DB] Attempt {attempt}/{retries} failed: {exc}. Retrying in {delay}s...")
                 time.sleep(delay)
-        raise RuntimeError(f"Не вдалося підключитися до БД після {retries} спроб: {last_exc}")
-
-    # ── Internal helpers ───────────────────────────────────────────────────────
+        raise RuntimeError(f"Could not connect to DB after {retries} attempts: {last_exc}")
 
     def _conn(self):
         return self._pool.getconn()
@@ -56,16 +48,7 @@ class Database:
     def _put(self, conn):
         self._pool.putconn(conn)
 
-    def _execute(self, sql: str, params: tuple = (), *, fetch: str = "none",
-                 write: bool = False):
-        """
-        Виконати SQL і (опційно) повернути результат.
-
-        fetch:
-          "none"  — нічого не повертати
-          "one"   — fetchone() → dict | None
-          "all"   — fetchall() → list[dict]
-        """
+    def _execute(self, sql: str, params: tuple = (), *, fetch: str = "none", write: bool = False):
         conn = self._conn()
         try:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
@@ -94,7 +77,6 @@ class Database:
                         full_name TEXT
                     )
                 """)
-
                 cur.execute("""
                     CREATE TABLE IF NOT EXISTS working_days (
                         id         SERIAL PRIMARY KEY,
@@ -103,7 +85,6 @@ class Database:
                         end_time   TIME NOT NULL
                     )
                 """)
-
                 cur.execute("""
                     CREATE TABLE IF NOT EXISTS bookings (
                         id        SERIAL PRIMARY KEY,
@@ -113,22 +94,18 @@ class Database:
                         UNIQUE(date, time)
                     )
                 """)
-
                 cur.execute("""
                     CREATE TABLE IF NOT EXISTS settings (
                         key   TEXT PRIMARY KEY,
                         value TEXT
                     )
                 """)
-
                 cur.execute(
-                    "INSERT INTO settings(key, value) VALUES ('slot_interval', %s) "
-                    "ON CONFLICT (key) DO NOTHING",
+                    "INSERT INTO settings(key, value) VALUES ('slot_interval', %s) ON CONFLICT (key) DO NOTHING",
                     (str(DEFAULT_INTERVAL),),
                 )
                 cur.execute(
-                    "INSERT INTO settings(key, value) VALUES ('admin_chat_id', '') "
-                    "ON CONFLICT (key) DO NOTHING"
+                    "INSERT INTO settings(key, value) VALUES ('admin_chat_id', '') ON CONFLICT (key) DO NOTHING"
                 )
                 conn.commit()
         except Exception:
@@ -136,8 +113,6 @@ class Database:
             raise
         finally:
             self._put(conn)
-
-    # ── Users ──────────────────────────────────────────────────────────────────
 
     def ensure_user(self, user_id: int, username: str, full_name: str):
         self._execute(
@@ -151,13 +126,8 @@ class Database:
             write=True,
         )
 
-    # ── Settings ───────────────────────────────────────────────────────────────
-
     def get_slot_interval(self) -> int:
-        row = self._execute(
-            "SELECT value FROM settings WHERE key = 'slot_interval'",
-            fetch="one",
-        )
+        row = self._execute("SELECT value FROM settings WHERE key = 'slot_interval'", fetch="one")
         return int(row["value"]) if row else DEFAULT_INTERVAL
 
     def set_slot_interval(self, minutes: int):
@@ -168,10 +138,7 @@ class Database:
         )
 
     def get_admin_chat_id(self) -> Optional[int]:
-        row = self._execute(
-            "SELECT value FROM settings WHERE key = 'admin_chat_id'",
-            fetch="one",
-        )
+        row = self._execute("SELECT value FROM settings WHERE key = 'admin_chat_id'", fetch="one")
         v = row["value"] if row else ""
         return int(v) if v else None
 
@@ -181,8 +148,6 @@ class Database:
             (str(chat_id),),
             write=True,
         )
-
-    # ── Working days ───────────────────────────────────────────────────────────
 
     def add_working_day(self, date: str, start_time: str, end_time: str):
         self._execute(
@@ -213,10 +178,7 @@ class Database:
     def get_available_days(self, include_past: bool = False) -> List[str]:
         today = datetime.now().strftime("%Y-%m-%d")
         if include_past:
-            rows = self._execute(
-                "SELECT date::text FROM working_days ORDER BY date",
-                fetch="all",
-            )
+            rows = self._execute("SELECT date::text FROM working_days ORDER BY date", fetch="all")
         else:
             rows = self._execute(
                 "SELECT date::text FROM working_days WHERE date >= %s ORDER BY date",
@@ -238,8 +200,6 @@ class Database:
             fetch="one",
         )
         return dict(row) if row else None
-
-    # ── Slots ──────────────────────────────────────────────────────────────────
 
     def get_free_slots(self, date: str, user_id: int) -> List[str]:
         day = self.get_working_day(date)
@@ -281,8 +241,6 @@ class Database:
 
         return free
 
-    # ── Bookings ───────────────────────────────────────────────────────────────
-
     def create_booking(self, user_id: int, date: str, time: str) -> bool:
         conn = self._conn()
         try:
@@ -294,7 +252,6 @@ class Database:
                 if cur.fetchone():
                     conn.rollback()
                     return False
-
                 cur.execute(
                     "INSERT INTO bookings(user_id, date, time) VALUES (%s, %s, %s)",
                     (user_id, date, time),

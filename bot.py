@@ -26,14 +26,10 @@ logger = logging.getLogger(__name__)
 
 tz = pytz.timezone(TIMEZONE)
 
-# ── DB ініціалізується в main(), щоб помилки були видимі одразу ───────────────
 db: Database
 
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
-
 def escape_md(text: str) -> str:
-    """Екранує спецсимволи Markdown v1 в довільному тексті."""
     for ch in r"\_*`[":
         text = text.replace(ch, f"\\{ch}")
     return text
@@ -148,10 +144,6 @@ def build_time_keyboard(step: str, selected_h: int | None = None) -> InlineKeybo
     return InlineKeyboardMarkup(rows)
 
 
-# ─────────────────────────────────────────────
-# /start
-# ─────────────────────────────────────────────
-
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     db.ensure_user(user.id, user.username or "", user.full_name)
@@ -169,10 +161,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text += "\n\n🔑 Ти маєш доступ до адмін\\-панелі."
     await update.message.reply_text(text, reply_markup=make_main_keyboard(admin))
 
-
-# ─────────────────────────────────────────────
-# BOOKING FLOW
-# ─────────────────────────────────────────────
 
 async def _show_dates(query) -> int:
     available_days = db.get_available_days()
@@ -265,14 +253,13 @@ async def book_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     slots = db.get_free_slots(date_str, user.id)
     if time_str not in slots:
-        await query.edit_message_text("⚠️ Цей час вже зайнятий. Обери інший слот.")
         dt = datetime.strptime(date_str, "%Y-%m-%d")
         buttons = []
         for slot in slots:
             buttons.append([InlineKeyboardButton(f"🕐 {slot}", callback_data=f"slot|{slot}")])
         buttons.append([InlineKeyboardButton("⬅️ Назад", callback_data="back_to_dates")])
         await query.edit_message_text(
-            f"📅 *{format_date_ua(dt)}*\n\nОбери зручний час:",
+            f"⚠️ Цей час вже зайнятий.\n\n📅 *{format_date_ua(dt)}*\n\nОбери зручний час:",
             parse_mode="Markdown",
             reply_markup=InlineKeyboardMarkup(buttons),
         )
@@ -342,10 +329,6 @@ async def notify_admin_new_booking(context, user, date_str: str, time_str: str):
         logger.error(f"Failed to notify admin: {e}")
 
 
-# ─────────────────────────────────────────────
-# MY BOOKINGS
-# ─────────────────────────────────────────────
-
 async def my_bookings(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     bookings = db.get_user_bookings(user_id)
@@ -362,10 +345,6 @@ async def my_bookings(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text += f"• {format_date_ua(dt)} о {b['time']}\n"
     await update.message.reply_text(text, parse_mode="Markdown")
 
-
-# ─────────────────────────────────────────────
-# CANCEL BOOKING
-# ─────────────────────────────────────────────
 
 async def cancel_booking_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -402,10 +381,6 @@ async def cancel_booking_confirm(update: Update, context: ContextTypes.DEFAULT_T
     return ConversationHandler.END
 
 
-# ─────────────────────────────────────────────
-# ADMIN PANEL
-# ─────────────────────────────────────────────
-
 async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update):
         await update.message.reply_text("⛔ У тебе немає доступу до цього розділу.")
@@ -440,9 +415,7 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["cal_year"] = now.year
         context.user_data["cal_month"] = now.month
         await query.edit_message_text(
-            "➕ *Додати робочий день*\n\n"
-            "Обери дату на календарі.\n"
-            "✅ — день вже додано (натисни щоб перезаписати).",
+            "➕ *Додати робочий день*\n\nОбери дату на календарі.\n✅ — день вже додано.",
             parse_mode="Markdown",
             reply_markup=build_calendar(now.year, now.month, existing),
         )
@@ -455,9 +428,7 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["cal_month"] = month
         existing = set(db.get_available_days(include_past=False))
         await query.edit_message_text(
-            "➕ *Додати робочий день*\n\n"
-            "Обери дату на календарі.\n"
-            "✅ — день вже додано (натисни щоб перезаписати).",
+            "➕ *Додати робочий день*\n\nОбери дату на календарі.\n✅ — день вже додано.",
             parse_mode="Markdown",
             reply_markup=build_calendar(year, month, existing),
         )
@@ -468,8 +439,7 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["new_day_date"] = date_str
         dt = datetime.strptime(date_str, "%Y-%m-%d")
         await query.edit_message_text(
-            f"📅 *{format_date_ua(dt)}*\n\n"
-            f"🕐 Обери час *початку* робочого дня:",
+            f"📅 *{format_date_ua(dt)}*\n\n🕐 Обери час *початку* робочого дня:",
             parse_mode="Markdown",
             reply_markup=build_time_keyboard("start"),
         )
@@ -481,9 +451,7 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         date_str = context.user_data.get("new_day_date", "")
         dt = datetime.strptime(date_str, "%Y-%m-%d")
         await query.edit_message_text(
-            f"📅 *{format_date_ua(dt)}*\n"
-            f"🕐 Початок: *{start_h:02d}:00*\n\n"
-            f"🕕 Обери час *кінця* робочого дня:",
+            f"📅 *{format_date_ua(dt)}*\n🕐 Початок: *{start_h:02d}:00*\n\n🕕 Обери час *кінця* робочого дня:",
             parse_mode="Markdown",
             reply_markup=build_time_keyboard("end", selected_h=start_h),
         )
@@ -496,7 +464,6 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         date_str = context.user_data.get("new_day_date", "")
         dt = datetime.strptime(date_str, "%Y-%m-%d")
         interval = db.get_slot_interval()
-
         sh = int(start_s.split(":")[0])
         slots_count = (end_h - sh) * 60 // interval
 
@@ -540,9 +507,7 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not days:
             await query.edit_message_text(
                 "😔 Немає доданих днів.",
-                reply_markup=InlineKeyboardMarkup([[
-                    InlineKeyboardButton("↩️ Назад", callback_data="admin_back")
-                ]]),
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("↩️ Назад", callback_data="admin_back")]]),
             )
             return ADMIN_STATES["MENU"]
         buttons = []
@@ -551,8 +516,7 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             buttons.append([InlineKeyboardButton(f"🗑 {format_date_ua(dt)}", callback_data=f"delday_{day}")])
         buttons.append([InlineKeyboardButton("↩️ Назад", callback_data="admin_back")])
         await query.edit_message_text(
-            "🗑 *Який день видалити?*\n\n"
-            "⚠️ Всі записи на цей день також будуть видалені.",
+            "🗑 *Який день видалити?*\n\n⚠️ Всі записи на цей день також будуть видалені.",
             parse_mode="Markdown",
             reply_markup=InlineKeyboardMarkup(buttons),
         )
@@ -582,9 +546,7 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text(
             text,
             parse_mode="Markdown",
-            reply_markup=InlineKeyboardMarkup([[
-                InlineKeyboardButton("↩️ Назад", callback_data="admin_back")
-            ]]),
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("↩️ Назад", callback_data="admin_back")]]),
         )
         return ADMIN_STATES["MENU"]
 
@@ -617,9 +579,7 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ADMIN_STATES["MENU"]
 
     if data == "interval_manual":
-        await query.edit_message_text(
-            "⏱ Введи інтервал у хвилинах (ціле число, не менше 30):"
-        )
+        await query.edit_message_text("⏱ Введи інтервал у хвилинах (ціле число, не менше 30):")
         return ADMIN_STATES["SET_INTERVAL"]
 
     if data == "admin_back":
@@ -660,17 +620,13 @@ async def cancel_conv(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 
-# ─────────────────────────────────────────────
-# MAIN
-# ─────────────────────────────────────────────
-
 def main():
     global db
     try:
         db = Database()
-        logger.info("База даних ініціалізована успішно.")
+        logger.info("Database initialized successfully.")
     except Exception as exc:
-        logger.critical(f"Не вдалося ініціалізувати БД: {exc}")
+        logger.critical(f"Failed to initialize DB: {exc}")
         raise SystemExit(1) from exc
 
     app = Application.builder().token(BOT_TOKEN).build()
@@ -730,7 +686,7 @@ def main():
     app.add_handler(admin_conv)
     app.add_handler(MessageHandler(filters.Regex("^📋 Мої записи$"), my_bookings))
 
-    logger.info("Бот запущено...")
+    logger.info("Bot started.")
     app.run_polling()
 
 
