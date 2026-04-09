@@ -546,17 +546,46 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data == "admin_bookings":
         bookings = db.get_all_upcoming_bookings()
         if not bookings:
-            text = "📋 Немає активних записів."
-        else:
-            text = "📋 *Всі записи:*\n\n"
-            for b in bookings:
-                dt = datetime.strptime(b["date"], "%Y-%m-%d")
-                name = escape_md(b.get("full_name") or b.get("username") or "Невідомий")
-                text += f"• {format_date_ua(dt)} {b['time']} — {name}\n"
+            await query.edit_message_text(
+                "📋 Немає активних записів.",
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("↩️ Назад", callback_data="admin_back")]]),
+            )
+            return ADMIN_STATES["MENU"]
+        buttons = []
+        for b in bookings:
+            dt = datetime.strptime(b["date"], "%Y-%m-%d")
+            name = b.get("full_name") or b.get("username") or "Невідомий"
+            label = f"❌ {format_date_ua(dt)} {b['time']} — {name}"
+            buttons.append([InlineKeyboardButton(label, callback_data=f"admin_del_booking_{b['id']}")])
+        buttons.append([InlineKeyboardButton("↩️ Назад", callback_data="admin_back")])
         await query.edit_message_text(
-            text,
+            "📋 *Всі записи:*\n\nНатисни на запис щоб видалити його.",
             parse_mode="Markdown",
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("↩️ Назад", callback_data="admin_back")]]),
+            reply_markup=InlineKeyboardMarkup(buttons),
+        )
+        return ADMIN_STATES["MENU"]
+
+    if data.startswith("admin_del_booking_"):
+        booking_id = int(data[len("admin_del_booking_"):])
+        db.admin_cancel_booking(booking_id)
+        bookings = db.get_all_upcoming_bookings()
+        if not bookings:
+            await query.edit_message_text(
+                "✅ Запис видалено.\n\n📋 Більше активних записів немає.",
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("↩️ Назад", callback_data="admin_back")]]),
+            )
+            return ADMIN_STATES["MENU"]
+        buttons = []
+        for b in bookings:
+            dt = datetime.strptime(b["date"], "%Y-%m-%d")
+            name = b.get("full_name") or b.get("username") or "Невідомий"
+            label = f"❌ {format_date_ua(dt)} {b['time']} — {name}"
+            buttons.append([InlineKeyboardButton(label, callback_data=f"admin_del_booking_{b['id']}")])
+        buttons.append([InlineKeyboardButton("↩️ Назад", callback_data="admin_back")])
+        await query.edit_message_text(
+            "✅ Запис видалено.\n\n📋 *Всі записи:*\n\nНатисни на запис щоб видалити його.",
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup(buttons),
         )
         return ADMIN_STATES["MENU"]
 

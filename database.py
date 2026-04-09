@@ -274,6 +274,13 @@ class Database:
             write=True,
         )
 
+    def admin_cancel_booking(self, booking_id: int):
+        self._execute(
+            "DELETE FROM bookings WHERE id = %s",
+            (booking_id,),
+            write=True,
+        )
+
     def get_user_bookings(self, user_id: int) -> List[Dict]:
         today = datetime.now().strftime("%Y-%m-%d")
         rows = self._execute(
