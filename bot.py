@@ -154,18 +154,18 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     db.ensure_user(user.id, user.username or "", user.full_name)
     admin = is_admin(update)
-    name = escape_md(user.first_name or "учню")
+    name = escape_mdv2(user.first_name or "учню")
     text = (
-        f"👋 Вітаю, {name}!\n\n"
-        "Це бот для запису на заняття. Тут ти можеш:\n"
+        f"👋 Вітаю, {name}\\!\n\n"
+        "Це бот для запису на заняття\\. Тут ти можеш:\n"
         "• Обрати зручний час і записатися\n"
         "• Переглянути свої записи\n"
         "• Скасувати запис\n\n"
         "Обери дію нижче 👇"
     )
     if admin:
-        text += "\n\n🔑 Ти маєш доступ до адмін\\-панелі."
-    await update.message.reply_text(text, reply_markup=make_main_keyboard(admin))
+        text += "\n\n🔑 Ти маєш доступ до адмін\\-панелі\\."
+    await update.message.reply_text(text, reply_markup=make_main_keyboard(admin), parse_mode="MarkdownV2")
 
 
 async def _show_dates(query) -> int:
@@ -295,7 +295,12 @@ async def book_finalize(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("❌ Запис скасовано.")
         return ConversationHandler.END
 
-    _, date_str, time_str = query.data.split("|", 2)
+    parts = query.data.split("|")
+    if len(parts) < 3:
+        await query.edit_message_text("⚠️ Помилка даних.")
+        return ConversationHandler.END
+        
+    _, date_str, time_str = parts[0], parts[1], parts[2]
     user = update.effective_user
 
     success = db.create_booking(user.id, date_str, time_str)
@@ -410,7 +415,7 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(
         "⚙️ *Адмін\\-панель*\n\nОбери дію:",
-        parse_mode="Markdown",
+        parse_mode="MarkdownV2",
         reply_markup=make_admin_menu_keyboard(),
     )
     return ADMIN_STATES["MENU"]
@@ -435,8 +440,8 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["cal_year"] = now.year
         context.user_data["cal_month"] = now.month
         await query.edit_message_text(
-            "➕ *Додати робочий день*\n\nОбери дату на календарі.\n✅ — день вже додано.",
-            parse_mode="Markdown",
+            "➕ *Додати робочий день*\n\nОбери дату на календарі\\.\n✅ — день вже додано\\.",
+            parse_mode="MarkdownV2",
             reply_markup=build_calendar(now.year, now.month, existing),
         )
         return ADMIN_STATES["ADD_DAY"]
@@ -448,8 +453,8 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["cal_month"] = month
         existing = set(db.get_available_days(include_past=False))
         await query.edit_message_text(
-            "➕ *Додати робочий день*\n\nОбери дату на календарі.\n✅ — день вже додано.",
-            parse_mode="Markdown",
+            "➕ *Додати робочий день*\n\nОбери дату на календарі\\.\n✅ — день вже додано\\.",
+            parse_mode="MarkdownV2",
             reply_markup=build_calendar(year, month, existing),
         )
         return ADMIN_STATES["ADD_DAY"]
@@ -459,8 +464,8 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["new_day_date"] = date_str
         dt = datetime.strptime(date_str, "%Y-%m-%d")
         await query.edit_message_text(
-            f"📅 *{format_date_ua(dt)}*\n\n🕐 Обери час *початку* робочого дня:",
-            parse_mode="Markdown",
+            f"📅 *{escape_mdv2(format_date_ua(dt))}*\n\n🕐 Обери час *початку* робочого дня:",
+            parse_mode="MarkdownV2",
             reply_markup=build_time_keyboard("start"),
         )
         return ADMIN_STATES["ADD_DAY"]
@@ -471,8 +476,8 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         date_str = context.user_data.get("new_day_date", "")
         dt = datetime.strptime(date_str, "%Y-%m-%d")
         await query.edit_message_text(
-            f"📅 *{format_date_ua(dt)}*\n🕐 Початок: *{start_h:02d}:00*\n\n🕕 Обери час *кінця* робочого дня:",
-            parse_mode="Markdown",
+            f"📅 *{escape_mdv2(format_date_ua(dt))}*\n🕐 Початок: *{start_h:02d}:00*\n\n🕕 Обери час *кінця* робочого дня:",
+            parse_mode="MarkdownV2",
             reply_markup=build_time_keyboard("end", selected_h=start_h),
         )
         return ADMIN_STATES["ADD_DAY"]
@@ -489,12 +494,12 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await query.edit_message_text(
             f"✅ *Підтвердження*\n\n"
-            f"📅 {format_date_ua(dt)}\n"
+            f"📅 {escape_mdv2(format_date_ua(dt))}\n"
             f"🕐 Початок: *{start_s}*\n"
             f"🕕 Кінець:  *{end_s}*\n"
             f"⏱ Слотів по {interval} хв: *{slots_count}*\n\n"
             f"Зберегти цей день?",
-            parse_mode="Markdown",
+            parse_mode="MarkdownV2",
             reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton("✅ Так, зберегти",  callback_data=f"confirm_day|{date_str}|{start_s}|{end_s}")],
                 [InlineKeyboardButton("✏️ Змінити час",    callback_data=f"cal_day_{date_str}")],
@@ -508,16 +513,13 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         db.add_working_day(date_str, start_s, end_s)
         dt = datetime.strptime(date_str, "%Y-%m-%d")
         interval = db.get_slot_interval()
-        sh = int(start_s.split(":")[0])
-        eh = int(end_s.split(":")[0])
-        slots_count = (eh - sh) * 60 // interval
         await query.edit_message_text(
-            f"✅ *Робочий день додано!*\n\n"
-            f"📅 {format_date_ua(dt)}\n"
+            f"✅ *Робочий день додано\\!*\n\n"
+            f"📅 {escape_mdv2(format_date_ua(dt))}\n"
             f"🕐 {start_s} – {end_s}\n"
             f"⏱ Інтервал між заняттями: {interval} хв\n\n"
             f"Обери наступну дію:",
-            parse_mode="Markdown",
+            parse_mode="MarkdownV2",
             reply_markup=make_admin_menu_keyboard(),
         )
         return ADMIN_STATES["MENU"]
@@ -626,7 +628,7 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data == "admin_back":
         await query.edit_message_text(
             "⚙️ *Адмін\\-панель*\n\nОбери дію:",
-            parse_mode="Markdown",
+            parse_mode="MarkdownV2",
             reply_markup=make_admin_menu_keyboard(),
         )
         return ADMIN_STATES["MENU"]
