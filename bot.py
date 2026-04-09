@@ -35,6 +35,12 @@ def escape_md(text: str) -> str:
     return text
 
 
+def escape_mdv2(text: str) -> str:
+    for ch in r"\_*[]()~`>#+-=|{}.!":
+        text = text.replace(ch, f"\\{ch}")
+    return text
+
+
 def is_admin(update: Update) -> bool:
     user = update.effective_user
     if not user:
@@ -551,16 +557,18 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("↩️ Назад", callback_data="admin_back")]]),
             )
             return ADMIN_STATES["MENU"]
+        text = "📋 *Всі записи:*\n\n"
         buttons = []
-        for b in bookings:
+        for i, b in enumerate(bookings, 1):
             dt = datetime.strptime(b["date"], "%Y-%m-%d")
-            name = b.get("full_name") or b.get("username") or "Невідомий"
-            label = f"❌ {format_date_ua(dt)} {b['time']} — {name}"
-            buttons.append([InlineKeyboardButton(label, callback_data=f"admin_del_booking_{b['id']}")])
+            full_name = escape_mdv2(b.get("full_name") or "Невідомий")
+            username = f" @{escape_mdv2(b['username'])}" if b.get("username") else ""
+            text += f"{i}\\. {format_date_ua(dt)} о {b['time']} — {full_name}{username}\n"
+            buttons.append([InlineKeyboardButton(f"🗑 Видалити запис №{i}", callback_data=f"admin_del_booking_{b['id']}")])
         buttons.append([InlineKeyboardButton("↩️ Назад", callback_data="admin_back")])
         await query.edit_message_text(
-            "📋 *Всі записи:*\n\nНатисни на запис щоб видалити його.",
-            parse_mode="Markdown",
+            text,
+            parse_mode="MarkdownV2",
             reply_markup=InlineKeyboardMarkup(buttons),
         )
         return ADMIN_STATES["MENU"]
@@ -571,20 +579,23 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         bookings = db.get_all_upcoming_bookings()
         if not bookings:
             await query.edit_message_text(
-                "✅ Запис видалено.\n\n📋 Більше активних записів немає.",
+                "✅ Запис видалено\\.\n\n📋 Більше активних записів немає\\.",
+                parse_mode="MarkdownV2",
                 reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("↩️ Назад", callback_data="admin_back")]]),
             )
             return ADMIN_STATES["MENU"]
+        text = "✅ Запис видалено\\.\n\n📋 *Всі записи:*\n\n"
         buttons = []
-        for b in bookings:
+        for i, b in enumerate(bookings, 1):
             dt = datetime.strptime(b["date"], "%Y-%m-%d")
-            name = b.get("full_name") or b.get("username") or "Невідомий"
-            label = f"❌ {format_date_ua(dt)} {b['time']} — {name}"
-            buttons.append([InlineKeyboardButton(label, callback_data=f"admin_del_booking_{b['id']}")])
+            full_name = escape_mdv2(b.get("full_name") or "Невідомий")
+            username = f" @{escape_mdv2(b['username'])}" if b.get("username") else ""
+            text += f"{i}\\. {format_date_ua(dt)} о {b['time']} — {full_name}{username}\n"
+            buttons.append([InlineKeyboardButton(f"🗑 Видалити запис №{i}", callback_data=f"admin_del_booking_{b['id']}")])
         buttons.append([InlineKeyboardButton("↩️ Назад", callback_data="admin_back")])
         await query.edit_message_text(
-            "✅ Запис видалено.\n\n📋 *Всі записи:*\n\nНатисни на запис щоб видалити його.",
-            parse_mode="Markdown",
+            text,
+            parse_mode="MarkdownV2",
             reply_markup=InlineKeyboardMarkup(buttons),
         )
         return ADMIN_STATES["MENU"]
