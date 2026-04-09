@@ -203,6 +203,9 @@ async def _show_dates(query) -> int:
 
 
 async def book_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    db.ensure_user(user.id, user.username or "", user.full_name)
+
     available_days = db.get_available_days()
     if not available_days:
         await update.message.reply_text(
@@ -239,7 +242,7 @@ async def book_choose_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
     slots = db.get_free_slots(date_str, update.effective_user.id)
     if not slots:
         await query.edit_message_text("😔 На цю дату вільних місць немає. Обери іншу дату.")
-        return ConversationHandler.END
+        return await _show_dates(query)
 
     dt = datetime.strptime(date_str, "%Y-%m-%d")
     buttons = []
@@ -270,8 +273,19 @@ async def book_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     slots = db.get_free_slots(date_str, user.id)
     if time_str not in slots:
-        await query.edit_message_text("⚠️ Цей час вже зайнятий. Спробуй ще раз.")
-        return ConversationHandler.END
+        await query.edit_message_text("⚠️ Цей час вже зайнятий. Обери інший слот.")
+        # Повертаємо до вибору часу
+        dt = datetime.strptime(date_str, "%Y-%m-%d")
+        buttons = []
+        for slot in slots:
+            buttons.append([InlineKeyboardButton(f"🕐 {slot}", callback_data=f"slot|{slot}")])
+        buttons.append([InlineKeyboardButton("⬅️ Назад", callback_data="back_to_dates")])
+        await query.edit_message_text(
+            f"📅 *{format_date_ua(dt)}*\n\nОбери зручний час:",
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup(buttons),
+        )
+        return BOOKING_STATES["CHOOSE_TIME"]
 
     dt = datetime.strptime(date_str, "%Y-%m-%d")
     # Підтвердження: callback_data використовує pipe як роздільник — безпечно
@@ -321,7 +335,7 @@ async def book_finalize(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def notify_admin_new_booking(context, user, date_str: str, time_str: str):
     try:
-        admin_id = db.get_admin_chat_id()
+        admin_id = db.get_admin_chat_id() or ADMIN_USER_ID
         if not admin_id:
             return
         dt = datetime.strptime(date_str, "%Y-%m-%d")
@@ -694,7 +708,12 @@ def main():
             BOOKING_STATES["CHOOSE_TIME"]: [CallbackQueryHandler(book_confirm)],
             BOOKING_STATES["CONFIRM"]:     [CallbackQueryHandler(book_finalize)],
         },
-        fallbacks=[MessageHandler(filters.Regex("^/cancel$"), cancel_conv)],
+        fallbacks=[
+            MessageHandler(filters.Regex("^/cancel$"), cancel_conv),
+            MessageHandler(filters.Regex("^📅 Записатися на заняття$"), book_start),
+        ],
+        per_message=False,
+        allow_reentry=True,
     )
 
     cancel_conv_handler = ConversationHandler(
@@ -705,6 +724,8 @@ def main():
             BOOKING_STATES["CANCEL_SELECT"]: [CallbackQueryHandler(cancel_booking_confirm)],
         },
         fallbacks=[MessageHandler(filters.Regex("^/cancel$"), cancel_conv)],
+        per_message=False,
+        allow_reentry=True,
     )
 
     admin_conv = ConversationHandler(

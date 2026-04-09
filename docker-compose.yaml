@@ -1,12 +1,36 @@
 services:
+  db:
+    image: postgres:16-alpine
+    container_name: tg_tutor_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB:       ${POSTGRES_DB:-botdb}
+      POSTGRES_USER:     ${POSTGRES_USER:-botuser}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-botuser} -d ${POSTGRES_DB:-botdb}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   bot:
     build: .
     container_name: tg_tutor_bot
     restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
     environment:
-      - BOT_TOKEN=${BOT_TOKEN}
-      - ADMIN_USERNAME=${ADMIN_USERNAME}
-      - ADMIN_USER_ID=${ADMIN_USER_ID}
-      - DATA_DIR=/app/data
-    volumes:
-      - ./data:/app/data
+      BOT_TOKEN:         ${BOT_TOKEN}
+      ADMIN_USERNAME:    ${ADMIN_USERNAME}
+      ADMIN_USER_ID:     ${ADMIN_USER_ID}
+      POSTGRES_HOST:     db
+      POSTGRES_PORT:     5432
+      POSTGRES_DB:       ${POSTGRES_DB:-botdb}
+      POSTGRES_USER:     ${POSTGRES_USER:-botuser}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+
+volumes:
+  pg_data:
