@@ -553,46 +553,33 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         bookings = db.get_all_upcoming_bookings()
         if not bookings:
             await query.edit_message_text(
-                "📋 Немає активних записів.",
-                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("↩️ Назад", callback_data="admin_back")]]),
-            )
-            return ADMIN_STATES["MENU"]
-        text = "📋 *Всі записи:*\n\n"
-        buttons = []
-        for i, b in enumerate(bookings, 1):
-            dt = datetime.strptime(b["date"], "%Y-%m-%d")
-            full_name = escape_mdv2(b.get("full_name") or "Невідомий")
-            username = f" @{escape_mdv2(b['username'])}" if b.get("username") else ""
-            text += f"{i}\\. {format_date_ua(dt)} о {b['time']} — {full_name}{username}\n"
-            buttons.append([InlineKeyboardButton(f"🗑 Видалити запис №{i}", callback_data=f"admin_del_booking_{b['id']}")])
-        buttons.append([InlineKeyboardButton("↩️ Назад", callback_data="admin_back")])
-        await query.edit_message_text(
-            text,
-            parse_mode="MarkdownV2",
-            reply_markup=InlineKeyboardMarkup(buttons),
-        )
-        return ADMIN_STATES["MENU"]
-
-    if data.startswith("admin_del_booking_"):
-        booking_id = int(data[len("admin_del_booking_"):])
-        db.admin_cancel_booking(booking_id)
-        bookings = db.get_all_upcoming_bookings()
-        if not bookings:
-            await query.edit_message_text(
-                "✅ Запис видалено\\.\n\n📋 Більше активних записів немає\\.",
+                "📋 Немає активних записів\\.",
                 parse_mode="MarkdownV2",
                 reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("↩️ Назад", callback_data="admin_back")]]),
             )
             return ADMIN_STATES["MENU"]
-        text = "✅ Запис видалено\\.\n\n📋 *Всі записи:*\n\n"
+
+        text = "📋 *Всі записи:*\\n\\n"
         buttons = []
+
         for i, b in enumerate(bookings, 1):
             dt = datetime.strptime(b["date"], "%Y-%m-%d")
-            full_name = escape_mdv2(b.get("full_name") or "Невідомий")
-            username = f" @{escape_mdv2(b['username'])}" if b.get("username") else ""
-            text += f"{i}\\. {format_date_ua(dt)} о {b['time']} — {full_name}{username}\n"
-            buttons.append([InlineKeyboardButton(f"🗑 Видалити запис №{i}", callback_data=f"admin_del_booking_{b['id']}")])
+
+            name = b.get("full_name") or b.get("username") or "Невідомий"
+            username = f" (@{b['username']})" if b.get("username") else ""
+
+            line = f"{i}. {format_date_ua(dt)} о {b['time']} — {name}{username}"
+            text += escape_mdv2(line) + "\\n"
+
+            buttons.append([
+                InlineKeyboardButton(
+                    f"🗑 Видалити запис №{i}",
+                    callback_data=f"admin_del_booking_{b['id']}"
+                )
+            ])
+
         buttons.append([InlineKeyboardButton("↩️ Назад", callback_data="admin_back")])
+
         await query.edit_message_text(
             text,
             parse_mode="MarkdownV2",
