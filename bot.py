@@ -341,11 +341,13 @@ async def my_bookings(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not bookings:
             await update.message.reply_text("📋 Немає активних записів учнів.")
             return
-        text = "📋 *Всі записи учнів:*\n\n"
+
+        text = "📋 Всі записи учнів:\n\n"
         for b in bookings:
             dt = datetime.strptime(b["date"], "%Y-%m-%d")
-            name = escape_md(b.get("full_name") or b.get("username") or "Невідомий")
+            name = b.get("full_name") or b.get("username") or "Невідомий"
             text += f"• {format_date_ua(dt)} о {b['time']} — {name}\n"
+
     else:
         user_id = update.effective_user.id
         bookings = db.get_user_bookings(user_id)
@@ -355,11 +357,13 @@ async def my_bookings(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "Натисни «📅 Записатися на заняття», щоб обрати час."
             )
             return
-        text = "📋 *Твої записи:*\n\n"
+
+        text = "📋 Твої записи:\n\n"
         for b in bookings:
             dt = datetime.strptime(b["date"], "%Y-%m-%d")
             text += f"• {format_date_ua(dt)} о {b['time']}\n"
-    await update.message.reply_text(text, parse_mode="Markdown")
+
+    await update.message.reply_text(text)
 
 
 async def cancel_booking_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
