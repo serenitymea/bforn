@@ -21,6 +21,8 @@ if not _DATABASE_URL:
     _pwd  = os.environ.get("POSTGRES_PASSWORD", "")
     _DATABASE_URL = f"postgresql://{_user}:{_pwd}@{_host}:{_port}/{_db}"
 
+if _DATABASE_URL.startswith("postgresql://"):
+    _DATABASE_URL = _DATABASE_URL.replace("postgresql://", "postgres://", 1)
 
 class Database:
     def __init__(self):
