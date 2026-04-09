@@ -1,24 +1,28 @@
-from dotenv import load_dotenv
 import os
 
-load_dotenv()
+# На Railway змінні оточення вставляються напряму — dotenv не потрібен.
+# Для локальної розробки можна встановити python-dotenv і розкоментувати рядки нижче:
+# from dotenv import load_dotenv
+# load_dotenv()
 
 # ── Налаштування ──────────────────────────────────────────────────────────────
-BOT_TOKEN = os.getenv("BOT_TOKEN", "YOUR_BOT_TOKEN_HERE")
+BOT_TOKEN = os.getenv("BOT_TOKEN", "")
+if not BOT_TOKEN:
+    raise RuntimeError("Змінна BOT_TOKEN не встановлена! Додай її в Railway → Variables.")
 
-# Юзернейм вчителя (без @) — залишено для сумісності, але авторизація йде по ID
-ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "teacher_username")
+# Юзернейм вчителя (без @) — запасний варіант авторизації
+ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "")
 
 # ID адміна в Telegram (надійніший спосіб авторизації, ніж username).
 # Дізнатись свій ID можна у @userinfobot.
-# Якщо не вказано — авторизація по ADMIN_USERNAME (менш надійно).
 _admin_id_raw = os.getenv("ADMIN_USER_ID", "")
 ADMIN_USER_ID: int | None = int(_admin_id_raw) if _admin_id_raw.strip().isdigit() else None
 
-# Часовий пояс України
-TIMEZONE = "Europe/Kyiv"
+# Часовий пояс
+TIMEZONE = os.getenv("TIMEZONE", "Europe/Kyiv")
 
-# Мінімальний інтервал між заняттями (хвилини). Можна змінити через адмін-панель
+# Мінімальний інтервал між заняттями (хвилини) — зберігається в БД,
+# це значення використовується лише як fallback при першому запуску
 SLOT_DURATION_MINUTES = 90
 
 # ── Стани розмов ──────────────────────────────────────────────────────────────

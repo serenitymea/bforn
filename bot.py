@@ -40,16 +40,11 @@ def escape_md(text: str) -> str:
 
 
 def is_admin(update: Update) -> bool:
-    """
-    Авторизація спочатку по user_id (надійно), потім по username (запасний варіант).
-    Встановіть ADMIN_USER_ID у .env для максимальної безпеки.
-    """
     user = update.effective_user
     if not user:
         return False
     if ADMIN_USER_ID is not None:
         return user.id == ADMIN_USER_ID
-    # fallback: username (можна змінити в Telegram — менш надійно)
     return bool(user.username) and user.username.lower() == ADMIN_USERNAME.lower().lstrip("@")
 
 
@@ -180,7 +175,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ─────────────────────────────────────────────
 
 async def _show_dates(query) -> int:
-    """Показати список доступних дат. Повертає стан розмови."""
     available_days = db.get_available_days()
     if not available_days:
         await query.edit_message_text(
@@ -247,7 +241,6 @@ async def book_choose_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
     dt = datetime.strptime(date_str, "%Y-%m-%d")
     buttons = []
     for slot in slots:
-        # Слот зберігається як callback_data з префіксом "slot|" (pipe-роздільник)
         buttons.append([InlineKeyboardButton(f"🕐 {slot}", callback_data=f"slot|{slot}")])
     buttons.append([InlineKeyboardButton("⬅️ Назад", callback_data="back_to_dates")])
 
@@ -266,7 +259,6 @@ async def book_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if query.data == "back_to_dates":
         return await _show_dates(query)
 
-    # Формат: "slot|HH:MM"
     time_str = query.data.split("|", 1)[1]
     date_str = context.user_data.get("booking_date")
     user = update.effective_user
@@ -274,7 +266,6 @@ async def book_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     slots = db.get_free_slots(date_str, user.id)
     if time_str not in slots:
         await query.edit_message_text("⚠️ Цей час вже зайнятий. Обери інший слот.")
-        # Повертаємо до вибору часу
         dt = datetime.strptime(date_str, "%Y-%m-%d")
         buttons = []
         for slot in slots:
@@ -288,7 +279,6 @@ async def book_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return BOOKING_STATES["CHOOSE_TIME"]
 
     dt = datetime.strptime(date_str, "%Y-%m-%d")
-    # Підтвердження: callback_data використовує pipe як роздільник — безпечно
     buttons = [
         [InlineKeyboardButton("✅ Підтвердити", callback_data=f"confirm|{date_str}|{time_str}")],
         [InlineKeyboardButton("❌ Скасувати",   callback_data="cancel")],
@@ -312,7 +302,6 @@ async def book_finalize(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("❌ Запис скасовано.")
         return ConversationHandler.END
 
-    # Формат: "confirm|YYYY-MM-DD|HH:MM"
     _, date_str, time_str = query.data.split("|", 2)
     user = update.effective_user
 
@@ -442,12 +431,9 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     data = query.data
 
-    # ── Ignore no-op calendar cells ──────────────────────────────────────────
     if data == "cal_ignore":
-        # Повертаємо поточний стан явно, щоб ConversationHandler не скидав його
         return ADMIN_STATES["ADD_DAY"]
 
-    # ── Open add-day calendar ─────────────────────────────────────────────────
     if data == "admin_add_day":
         now = datetime.now(tz)
         existing = set(db.get_available_days(include_past=False))
@@ -462,9 +448,7 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return ADMIN_STATES["ADD_DAY"]
 
-    # ── Calendar navigation ───────────────────────────────────────────────────
     if data.startswith("cal_prev_") or data.startswith("cal_next_"):
-        # Формат: cal_prev_YYYY_MM або cal_next_YYYY_MM
         parts = data.split("_")
         year, month = int(parts[-2]), int(parts[-1])
         context.user_data["cal_year"] = year
@@ -479,7 +463,6 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return ADMIN_STATES["ADD_DAY"]
 
-    # ── Date chosen — ask start time ──────────────────────────────────────────
     if data.startswith("cal_day_"):
         date_str = data[len("cal_day_"):]
         context.user_data["new_day_date"] = date_str
@@ -492,7 +475,6 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return ADMIN_STATES["ADD_DAY"]
 
-    # ── Start time chosen — ask end time ──────────────────────────────────────
     if data.startswith("time_start_"):
         start_h = int(data[len("time_start_"):])
         context.user_data["new_day_start"] = f"{start_h:02d}:00"
@@ -507,7 +489,6 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return ADMIN_STATES["ADD_DAY"]
 
-    # ── End time chosen — confirm ─────────────────────────────────────────────
     if data.startswith("time_end_"):
         end_h = int(data[len("time_end_"):])
         end_s = f"{end_h:02d}:00"
@@ -519,7 +500,6 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         sh = int(start_s.split(":")[0])
         slots_count = (end_h - sh) * 60 // interval
 
-        # Pipe-роздільник: confirm_day|YYYY-MM-DD|HH:MM|HH:MM
         await query.edit_message_text(
             f"✅ *Підтвердження*\n\n"
             f"📅 {format_date_ua(dt)}\n"
@@ -536,13 +516,14 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return ADMIN_STATES["ADD_DAY"]
 
-    # ── Final save ────────────────────────────────────────────────────────────
     if data.startswith("confirm_day|"):
-        # Формат: confirm_day|YYYY-MM-DD|HH:MM|HH:MM
         _, date_str, start_s, end_s = data.split("|", 3)
         db.add_working_day(date_str, start_s, end_s)
         dt = datetime.strptime(date_str, "%Y-%m-%d")
         interval = db.get_slot_interval()
+        sh = int(start_s.split(":")[0])
+        eh = int(end_s.split(":")[0])
+        slots_count = (eh - sh) * 60 // interval
         await query.edit_message_text(
             f"✅ *Робочий день додано!*\n\n"
             f"📅 {format_date_ua(dt)}\n"
@@ -554,7 +535,6 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return ADMIN_STATES["MENU"]
 
-    # ── Delete day ────────────────────────────────────────────────────────────
     if data == "admin_del_day":
         days = db.get_available_days(include_past=False)
         if not days:
@@ -589,7 +569,6 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return ADMIN_STATES["MENU"]
 
-    # ── All bookings ──────────────────────────────────────────────────────────
     if data == "admin_bookings":
         bookings = db.get_all_upcoming_bookings()
         if not bookings:
@@ -609,7 +588,6 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return ADMIN_STATES["MENU"]
 
-    # ── Change interval ───────────────────────────────────────────────────────
     if data == "admin_interval":
         current = db.get_slot_interval()
         presets = [45, 60, 90, 120]
@@ -644,7 +622,6 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return ADMIN_STATES["SET_INTERVAL"]
 
-    # ── Back to menu ──────────────────────────────────────────────────────────
     if data == "admin_back":
         await query.edit_message_text(
             "⚙️ *Адмін\\-панель*\n\nОбери дію:",
@@ -653,7 +630,6 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return ADMIN_STATES["MENU"]
 
-    # Невідомий callback — лишаємось у поточному стані
     return ADMIN_STATES["MENU"]
 
 

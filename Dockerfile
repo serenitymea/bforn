@@ -11,9 +11,4 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-ENV BOT_TOKEN=""
-ENV ADMIN_USERNAME=""
-ENV ADMIN_USER_ID=""
-ENV DATA_DIR="/app/data"
-
 CMD ["python", "bot.py"]

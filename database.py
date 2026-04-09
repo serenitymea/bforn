@@ -1,4 +1,5 @@
 import os
+import time
 import threading
 from datetime import datetime
 from typing import List, Dict, Optional
@@ -10,7 +11,9 @@ from psycopg2.pool import ThreadedConnectionPool
 DEFAULT_INTERVAL = 90  # хвилин
 
 # ── DSN ───────────────────────────────────────────────────────────────────────
-# Підтримує або DATABASE_URL, або окремі змінні оточення.
+# Railway завжди надає DATABASE_URL у форматі postgresql://
+# psycopg2 підтримує обидва варіанти (postgresql:// і postgres://)
+# НЕ замінюємо схему — залишаємо як є.
 _DATABASE_URL = os.environ.get("DATABASE_URL")
 
 if not _DATABASE_URL:
@@ -21,24 +24,36 @@ if not _DATABASE_URL:
     _pwd  = os.environ.get("POSTGRES_PASSWORD", "")
     _DATABASE_URL = f"postgresql://{_user}:{_pwd}@{_host}:{_port}/{_db}"
 
-if _DATABASE_URL.startswith("postgresql://"):
-    _DATABASE_URL = _DATABASE_URL.replace("postgresql://", "postgres://", 1)
 
 class Database:
     def __init__(self):
         self._lock = threading.Lock()
-        # Пул: мін. 1, макс. 10 з'єднань
-        self._pool = ThreadedConnectionPool(1, 10, dsn=_DATABASE_URL)
+        self._pool = self._create_pool_with_retry()
         self._init_tables()
+
+    # ── Pool creation with retry (Railway DB може стартувати повільніше) ───────
+
+    def _create_pool_with_retry(self, retries: int = 10, delay: float = 3.0) -> ThreadedConnectionPool:
+        last_exc = None
+        for attempt in range(1, retries + 1):
+            try:
+                pool = ThreadedConnectionPool(1, 10, dsn=_DATABASE_URL)
+                # Перевіряємо що з'єднання реально працює
+                conn = pool.getconn()
+                pool.putconn(conn)
+                return pool
+            except Exception as exc:
+                last_exc = exc
+                print(f"[DB] Спроба {attempt}/{retries} не вдалась: {exc}. Повтор через {delay}с...")
+                time.sleep(delay)
+        raise RuntimeError(f"Не вдалося підключитися до БД після {retries} спроб: {last_exc}")
 
     # ── Internal helpers ───────────────────────────────────────────────────────
 
     def _conn(self):
-        """Взяти з'єднання з пулу."""
         return self._pool.getconn()
 
     def _put(self, conn):
-        """Повернути з'єднання до пулу."""
         self._pool.putconn(conn)
 
     def _execute(self, sql: str, params: tuple = (), *, fetch: str = "none",
@@ -106,7 +121,6 @@ class Database:
                     )
                 """)
 
-                # Defaults
                 cur.execute(
                     "INSERT INTO settings(key, value) VALUES ('slot_interval', %s) "
                     "ON CONFLICT (key) DO NOTHING",
@@ -126,11 +140,6 @@ class Database:
     # ── Users ──────────────────────────────────────────────────────────────────
 
     def ensure_user(self, user_id: int, username: str, full_name: str):
-        """
-        Upsert користувача.
-        Використовуємо ON CONFLICT … DO UPDATE, щоб не видаляти рядок і не
-        порушувати зовнішні ключі (замість INSERT OR REPLACE у SQLite).
-        """
         self._execute(
             """
             INSERT INTO users(id, username, full_name) VALUES (%s, %s, %s)
@@ -189,11 +198,9 @@ class Database:
         )
 
     def delete_working_day(self, date: str):
-        """Видалити день і всі записи на нього (каскадно через дату)."""
         conn = self._conn()
         try:
             with conn.cursor() as cur:
-                # bookings не має FK на working_days → видаляємо вручну
                 cur.execute("DELETE FROM bookings WHERE date = %s", (date,))
                 cur.execute("DELETE FROM working_days WHERE date = %s", (date,))
             conn.commit()
@@ -235,14 +242,6 @@ class Database:
     # ── Slots ──────────────────────────────────────────────────────────────────
 
     def get_free_slots(self, date: str, user_id: int) -> List[str]:
-        """
-        Повертає список вільних слотів 'HH:MM' для дати.
-
-        Виправлення відносно оригіналу:
-        - Слоти, заброньовані тим самим користувачем, теж вважаються зайнятими
-          (користувач не може записатися двічі на один час).
-        - Минулі слоти поточного дня фільтруються коректно.
-        """
         day = self.get_working_day(date)
         if not day:
             return []
@@ -260,7 +259,6 @@ class Database:
             all_slots.append(f"{cur // 60:02d}:{cur % 60:02d}")
             cur += interval
 
-        # Всі заброньовані слоти на цю дату (будь-яким користувачем)
         rows = self._execute(
             "SELECT to_char(time, 'HH24:MI') AS time FROM bookings WHERE date = %s",
             (date,),
@@ -274,7 +272,6 @@ class Database:
         for slot in all_slots:
             if slot in booked:
                 continue
-            # Фільтруємо вже минулі слоти сьогоднішнього дня
             if date == today_str:
                 sh, sm = map(int, slot.split(":"))
                 slot_dt = now.replace(hour=sh, minute=sm, second=0, microsecond=0)
@@ -287,25 +284,16 @@ class Database:
     # ── Bookings ───────────────────────────────────────────────────────────────
 
     def create_booking(self, user_id: int, date: str, time: str) -> bool:
-        """
-        Створити запис. Повертає True при успіху, False якщо слот вже зайнятий.
-
-        Виправлення: перевірка унікальності відбувається всередині однієї
-        транзакції з блокуванням рядка (SELECT … FOR UPDATE), що усуває
-        race-condition при одночасному запису.
-        """
         conn = self._conn()
         try:
             with conn.cursor() as cur:
-                # Блокуємо потенційний конфліктний рядок, щоб два потоки не
-                # вставили однаковий слот одночасно
                 cur.execute(
                     "SELECT id FROM bookings WHERE date = %s AND time = %s FOR UPDATE",
                     (date, time),
                 )
                 if cur.fetchone():
                     conn.rollback()
-                    return False  # слот вже зайнятий
+                    return False
 
                 cur.execute(
                     "INSERT INTO bookings(user_id, date, time) VALUES (%s, %s, %s)",
