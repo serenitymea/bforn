@@ -563,7 +563,7 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return ADMIN_STATES["MENU"]
 
-        text = "📋 *Всі записи:*\\n\\n"
+        text = "📋 \\*Всі записи:\\*\n\n"
         buttons = []
 
         for i, b in enumerate(bookings, 1):
@@ -573,11 +573,11 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             username = f" (@{b['username']})" if b.get("username") else ""
 
             line = f"{i}. {format_date_ua(dt)} о {b['time']} — {name}{username}"
-            text += escape_mdv2(line) + "\\n"
+            text += escape_mdv2(line) + "\n"
 
             buttons.append([
                 InlineKeyboardButton(
-                    f"🗑 Видалити запис №{i}",
+                    f"🗑 Видалити №{i}",
                     callback_data=f"admin_del_booking_{b['id']}"
                 )
             ])
