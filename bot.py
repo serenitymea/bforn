@@ -330,19 +330,29 @@ async def notify_admin_new_booking(context, user, date_str: str, time_str: str):
 
 
 async def my_bookings(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    bookings = db.get_user_bookings(user_id)
-    if not bookings:
-        await update.message.reply_text(
-            "📋 У тебе немає активних записів.\n"
-            "Натисни «📅 Записатися на заняття», щоб обрати час."
-        )
-        return
-
-    text = "📋 *Твої записи:*\n\n"
-    for b in bookings:
-        dt = datetime.strptime(b["date"], "%Y-%m-%d")
-        text += f"• {format_date_ua(dt)} о {b['time']}\n"
+    if is_admin(update):
+        bookings = db.get_all_upcoming_bookings()
+        if not bookings:
+            await update.message.reply_text("📋 Немає активних записів учнів.")
+            return
+        text = "📋 *Всі записи учнів:*\n\n"
+        for b in bookings:
+            dt = datetime.strptime(b["date"], "%Y-%m-%d")
+            name = escape_md(b.get("full_name") or b.get("username") or "Невідомий")
+            text += f"• {format_date_ua(dt)} о {b['time']} — {name}\n"
+    else:
+        user_id = update.effective_user.id
+        bookings = db.get_user_bookings(user_id)
+        if not bookings:
+            await update.message.reply_text(
+                "📋 У тебе немає активних записів.\n"
+                "Натисни «📅 Записатися на заняття», щоб обрати час."
+            )
+            return
+        text = "📋 *Твої записи:*\n\n"
+        for b in bookings:
+            dt = datetime.strptime(b["date"], "%Y-%m-%d")
+            text += f"• {format_date_ua(dt)} о {b['time']}\n"
     await update.message.reply_text(text, parse_mode="Markdown")
 
 
