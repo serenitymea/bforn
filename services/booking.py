@@ -32,13 +32,25 @@ def get_free_slots(date: str, _user_id: int) -> list[str]:
     now = datetime.now(_tz)
     today_str = now.strftime("%Y-%m-%d")
 
+    now_minutes = now.hour * 60 + now.minute
+
     free: list[str] = []
     for slot in all_slots:
         if slot in booked:
             continue
         if date == today_str:
             sh, sm = map(int, slot.split(":"))
-            slot_dt = now.replace(hour=sh, minute=sm, second=0, microsecond=0)
-            if slot_dt <= now:
+            if sh * 60 + sm <= now_minutes:
                 continue
         free.append(slot)
+
+    return free
+
+
+def book(user_id: int, date: str, time: str) -> bool:
+    """returns True or F"""
+    return queries.create_booking(user_id, date, time)
+
+
+def cancel(booking_id: int, user_id: int) -> None:
+    queries.cancel_booking(booking_id, user_id)
