@@ -52,7 +52,7 @@ def build_handler() -> ConversationHandler:
     return ConversationHandler(
         entry_points=[MessageHandler(filters.Regex("^❌ Скасувати запис$"), start)],
         states={
-            _S.CANCEL_SELECT: [CallbackQueryHandler(confirm)],
+            _S.CANCEL_SELECT: [CallbackQueryHandler(confirm, pattern=r"^(cancel_book_\d+|cancel$)")],
         },
         fallbacks=[MessageHandler(filters.Regex("^/cancel$"), cancel_conv)],
         per_message=False,

@@ -20,9 +20,10 @@ logger = logging.getLogger(__name__)
 _S = BookingState  # short alias
 
 
-#addddd
+# ── Допоміжні ─────────────────────────────────────────────────────────────────
 
 async def _render_dates(query) -> int:
+    """Перемальовує список дат (повторне використання з book_start і «назад»)."""
     days = get_available_days()
     if not days:
         await query.edit_message_text(
@@ -37,7 +38,7 @@ async def _render_dates(query) -> int:
     return _S.CHOOSE_DATE
 
 
-#Handlers
+# addadd
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     user = update.effective_user
@@ -162,15 +163,15 @@ async def cancel_conv(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
     return ConversationHandler.END
 
 
-# ConversationHandler
+# startup ConversationHandler
 
 def build_handler() -> ConversationHandler:
     return ConversationHandler(
         entry_points=[MessageHandler(filters.Regex("^📅 Записатися на заняття$"), start)],
         states={
-            _S.CHOOSE_DATE: [CallbackQueryHandler(choose_time)],
-            _S.CHOOSE_TIME: [CallbackQueryHandler(confirm)],
-            _S.CONFIRM:     [CallbackQueryHandler(finalize)],
+            _S.CHOOSE_DATE: [CallbackQueryHandler(choose_time, pattern=r"^(date_|cancel$)")],
+            _S.CHOOSE_TIME: [CallbackQueryHandler(confirm,     pattern=r"^(slot\||back_to_dates$)")],
+            _S.CONFIRM:     [CallbackQueryHandler(finalize,    pattern=r"^(confirm\||cancel$)")],
         },
         fallbacks=[
             MessageHandler(filters.Regex("^/cancel$"), cancel_conv),
